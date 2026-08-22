@@ -274,9 +274,9 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
 
   # Новая формула расчета стоимости по квадратуре и глубине
   w = data["width"]
-  h = data["height"]
-  depth = data["depth"]
-  area = (w * h) / 1000000  квадратные метры
+h = data["height"]
+depth = data["depth"]
+area = (w * h) / 1000000  # квадратные метры
 
   # Выбираем ставку в зависимости от глубины
   if depth <= 400:
