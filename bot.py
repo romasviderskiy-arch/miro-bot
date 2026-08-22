@@ -1,5 +1,7 @@
 import asyncio
 import logging
+import os
+from aiohttp import web
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.filters import CommandStart
 from aiogram.fsm.context import FSMContext
@@ -14,7 +16,7 @@ from aiogram.types import (
 )
 
 
-TOKEN = "8886678281:AAEGB93zbn_TLlN-81GbxXAAWGnhtIkuDpM"
+TOKEN = "8886678281:AAEGb93zbn_TL1N-81GbxXAAWGnhTkUdPM"
 ADMIN_ID = 2617518
 
 router = Router()
@@ -26,18 +28,21 @@ class CalculatorStates(StatesGroup):
   waiting_for_height = State()
   waiting_for_depth = State()
   waiting_for_material = State()
+  waiting_for_hardware = State()
   waiting_for_drawers = State()
   waiting_for_rods = State()
   waiting_for_doors = State()
   waiting_for_contact = State()
 
 
-# Тарифы за 1 кв.м в зависимости от глубины (в сумах)
+# Базовые цены за 1 кв.м в зависимости от глубины (в сумах)
 PRICE_SHALLOW = 1000000  # Глубина до 40 см
 PRICE_DEEP = 1200000  # Глубина от 40 до 60 см
 
 PRICES = {
     "Egger": 150000,
+    "hardware_standard": 200000,
+    "hardware_premium": 650000,
     "drawer": 350000,
     "rod": 90000,
     "doors_ldsp": 3000,
@@ -199,6 +204,39 @@ async def process_material(callback: CallbackQuery, state: FSMContext):
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
+              InlineKeyboardButton(
+                  text="⚙️ Стандарт (Samet / Boyard)", callback_data="hw_standard"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text="💎 Премиум с доводчиками (Blum / Hettich)",
+                  callback_data="hw_premium",
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(
+      "Выберите класс фурнитуры:\n\n• *Стандарт*: надежные петли и направляющие без"
+      " лишних переплат.\n• *Премиум*: плавное и бесшумное закрывание от"
+      " мировых брендов.",
+      reply_markup=keyboard,
+      parse_mode="Markdown",
+  )
+  await state.set_state(CalculatorStates.waiting_for_hardware)
+  await callback.answer()
+
+
+@router.callback_query(
+    CalculatorStates.waiting_for_hardware, F.data.startswith("hw_")
+)
+async def process_hardware(callback: CallbackQuery, state: FSMContext):
+  hardware = callback.data.split("_")[1]
+  await state.update_data(hardware=hardware)
+
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
               InlineKeyboardButton(text="0 шт.", callback_data="drawers_0"),
               InlineKeyboardButton(text="2 шт.", callback_data="drawers_2"),
               InlineKeyboardButton(text="4 шт.", callback_data="drawers_4"),
@@ -274,7 +312,7 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
   w = data["width"]
   h = data["height"]
   depth = data["depth"]
-  area = (w * h) / 1000000  # квадратные метры
+  area = (w * h) / 1000000
 
   if depth <= 400:
     base_rate = PRICE_SHALLOW
@@ -284,19 +322,34 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
     depth_text = "От 40 до 60 см"
 
   brand_addon = PRICES["Egger"] if data["mat_brand"] == "egger" else 0
+  hw_addon = (
+      PRICES["hardware_premium"]
+      if data["hardware"] == "premium"
+      else PRICES["hardware_standard"]
+  )
   door_price = (
       PRICES["doors_ldsp"] if data["doors"] == "ldsp" else PRICES["doors_mirror"]
   )
 
-  base_cost = area * base_rate + brand_addon
+  base_cost = area * base_rate + brand_addon + hw_addon
   drawers_cost = data["drawers"] * PRICES["drawer"]
   rods_cost = data["rods"] * PRICES["rod"]
   total_price = round(base_cost + door_price + drawers_cost + rods_cost)
 
-  await state.update_data(total_price=total_price, depth_text=depth_text)
+  hw_text = (
+      "Премиум (Blum/Hettich)"
+      if data["hardware"] == "premium"
+      else "Стандарт (Samet/Boyard)"
+  )
+
+  await state.update_data(
+      total_price=total_price, depth_text=depth_text, hw_text=hw_text
+  )
 
   contact_kb = ReplyKeyboardMarkup(
-      keyboard=[[KeyboardButton(text="📱 Отправить мой номер", request_contact=True)]],
+      keyboard=[
+          [KeyboardButton(text="📱 Отправить мой номер", request_contact=True)]
+      ],
       resize_keyboard=True,
       one_time_keyboard=True,
   )
@@ -306,13 +359,16 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
       f"• Тип: {data['cabinet_type'].capitalize()}\n"
       f"• Размеры: {w} × {h} мм (Глубина: {depth_text})\n"
       f"• Материал: {data['mat_type'].upper()} ({data['mat_brand'].capitalize()})\n"
+      f"• Фурнитура: {hw_text}\n"
       f"• Ящики: {data['drawers']} шт. | Штанги: {data['rods']} шт.\n"
       f"• Фасады: {'Зеркало' if data['doors']=='mirror' else 'ЛДСП'}\n\n"
       f"💰 **Примерная стоимость:** `{total_price:,}` сум\n\n"
       f"Нажмите кнопку ниже, чтобы отправить контакт и передать заявку мастеру:"
   )
 
-  await callback.message.answer(text, reply_markup=contact_kb, parse_mode="Markdown")
+  await callback.message.answer(
+      text, reply_markup=contact_kb, parse_mode="Markdown"
+  )
   await state.set_state(CalculatorStates.waiting_for_contact)
   await callback.answer()
 
@@ -330,6 +386,7 @@ async def process_contact(message: Message, state: FSMContext, bot: Bot):
       f"• ШхВ: {data['width']} × {data['height']} мм\n"
       f"• Глубина: {data['depth_text']}\n"
       f"• Материал: {data['mat_type'].upper()} ({data['mat_brand']})\n"
+      f"• Фурнитура: {data['hw_text']}\n"
       f"• Ящики: {data['drawers']} | Штанги: {data['rods']}\n"
       f"• Фасады: {data['doors']}\n"
       f"💰 Сумма: `{data['total_price']:,}` сум"
@@ -342,12 +399,31 @@ async def process_contact(message: Message, state: FSMContext, bot: Bot):
   await state.clear()
 
 
+# Функция для веб-сервера (чтобы Render не ругался на закрытый порт)
+async def handle_ping(request):
+  return web.Response(text="Bot is running!")
+
+
+async def web_server():
+  app = web.Application()
+  app.add_routes([web.get("/", handle_ping)])
+  runner = web.AppRunner(app)
+  await runner.setup()
+  port = int(os.environ.get("PORT", 10000))
+  site = web.TCPSite(runner, "0.0.0.0", port)
+  await site.start()
+  print(f"Веб-сервер запущен на порту {port}")
+
+
 async def main():
   logging.basicConfig(level=logging.INFO)
   bot = Bot(token=TOKEN)
   dp = Dispatcher()
   dp.include_router(router)
-  print("Бот запущен с новой формулой!")
+
+  # Запускаем и веб-сервер для порта, и поллинг бота одновременно
+  await web_server()
+  print("Бот запущен и готов к работе!")
   await dp.start_polling(bot)
 
 
