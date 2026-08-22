@@ -14,7 +14,7 @@ from aiogram.types import (
 )
 
 
-TOKEN = "8886678281:AAEGB93zbn_TLlN-81GbxXAAWGnhtIkuDpM"
+TOKEN = "8886678281:AAEGb93zbn_TL1N-81GbxXAAWGnhTkUdPM"
 ADMIN_ID = 2617518
 
 router = Router()
@@ -24,7 +24,7 @@ class CalculatorStates(StatesGroup):
   waiting_for_type = State()
   waiting_for_width = State()
   waiting_for_height = State()
-  waiting_for_depth = State()  # Новый шаг: глубина
+  waiting_for_depth = State()
   waiting_for_material = State()
   waiting_for_drawers = State()
   waiting_for_rods = State()
@@ -32,14 +32,14 @@ class CalculatorStates(StatesGroup):
   waiting_for_contact = State()
 
 
-# Базовые цены за 1 кв.м в зависимости от глубины (в сумах)
+# Тарифы за 1 кв.м в зависимости от глубины (в сумах)
 PRICE_SHALLOW = 1000000  # Глубина до 40 см
 PRICE_DEEP = 1200000  # Глубина от 40 до 60 см
 
 PRICES = {
-    "Egger": 150000,  # Доплата за бренд Egger (если нужно)
-    "drawer": 350000,  # Цена за 1 ящик
-    "rod": 90000,  # Цена за 1 штангу
+    "Egger": 150000,
+    "drawer": 350000,
+    "rod": 90000,
     "doors_ldsp": 3000,
     "doors_mirror": 7000,
 }
@@ -138,7 +138,6 @@ async def process_height(callback: CallbackQuery, state: FSMContext):
   height = int(callback.data.split("_")[1])
   await state.update_data(height=height)
 
-  # Новый шаг: выбор глубины шкафа
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -272,18 +271,16 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
 
   data = await state.get_data()
 
-  # Новая формула расчета стоимости по квадратуре и глубине
   w = data["width"]
-h = data["height"]
-depth = data["depth"]
-area = (w * h) / 1000000  # квадратные метры
+  h = data["height"]
+  depth = data["depth"]
+  area = (w * h) / 1000000  # квадратные метры
 
-  # Выбираем ставку в зависимости от глубины
   if depth <= 400:
-    base_rate = PRICE_SHALLOW  # 1 000 000 сум за кв.м
+    base_rate = PRICE_SHALLOW
     depth_text = "До 40 см"
   else:
-    base_rate = PRICE_DEEP  # 1 200 000 сум за кв.м
+    base_rate = PRICE_DEEP
     depth_text = "От 40 до 60 см"
 
   brand_addon = PRICES["Egger"] if data["mat_brand"] == "egger" else 0
