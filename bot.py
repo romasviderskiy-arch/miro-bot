@@ -14,8 +14,8 @@ from aiogram.types import (
 )
 
 
-TOKEN = "8886678281:AAEGB93zbn_TLlN-81GbxXAAWGnhtIkuDpM"
-ADMIN_ID = 2617518 
+TOKEN = 8886678281:AAEGB93zbn_TLlN-81GbxXAAWGnhtIkuDpM
+ADMIN_ID = 2617518
 
 router = Router()
 
@@ -24,6 +24,7 @@ class CalculatorStates(StatesGroup):
   waiting_for_type = State()
   waiting_for_width = State()
   waiting_for_height = State()
+  waiting_for_depth = State()  # Новый шаг: глубина
   waiting_for_material = State()
   waiting_for_drawers = State()
   waiting_for_rods = State()
@@ -31,13 +32,14 @@ class CalculatorStates(StatesGroup):
   waiting_for_contact = State()
 
 
-# Цены для расчетов (в сумах)
+# Базовые цены за 1 кв.м в зависимости от глубины (в сумах)
+PRICE_SHALLOW = 1000000  # Глубина до 40 см
+PRICE_DEEP = 1200000  # Глубина от 40 до 60 см
+
 PRICES = {
-    "LDSP": 35000,
-    "MDF": 55000,
-    "Egger": 150000,
-    "drawer": 350000,
-    "rod": 90000,
+    "Egger": 150000,  # Доплата за бренд Egger (если нужно)
+    "drawer": 350000,  # Цена за 1 ящик
+    "rod": 90000,  # Цена за 1 штангу
     "doors_ldsp": 3000,
     "doors_mirror": 7000,
 }
@@ -135,6 +137,35 @@ async def process_width(event: Message | CallbackQuery, state: FSMContext):
 async def process_height(callback: CallbackQuery, state: FSMContext):
   height = int(callback.data.split("_")[1])
   await state.update_data(height=height)
+
+  # Новый шаг: выбор глубины шкафа
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text="До 40 см (400 мм)", callback_data="depth_350"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text="От 40 до 60 см (600 мм)", callback_data="depth_550"
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(
+      "Выберите глубину шкафа:", reply_markup=keyboard
+  )
+  await state.set_state(CalculatorStates.waiting_for_depth)
+  await callback.answer()
+
+
+@router.callback_query(
+    CalculatorStates.waiting_for_depth, F.data.startswith("depth_")
+)
+async def process_depth(callback: CallbackQuery, state: FSMContext):
+  depth = int(callback.data.split("_")[1])
+  await state.update_data(depth=depth)
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
@@ -241,14 +272,20 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
 
   data = await state.get_data()
 
-  # Формула расчета стоимости
+  # Новая формула расчета стоимости по квадратуре и глубине
   w = data["width"]
   h = data["height"]
-  area = (w * h) / 1000000
+  depth = data["depth"]
+  area = (w * h) / 1000000  квадратные метры
 
-  base_rate = (
-      PRICES["LDSP"] if data["mat_type"] == "ldsp" else PRICES["MDF"]
-  )
+  # Выбираем ставку в зависимости от глубины
+  if depth <= 400:
+    base_rate = PRICE_SHALLOW  # 1 000 000 сум за кв.м
+    depth_text = "До 40 см"
+  else:
+    base_rate = PRICE_DEEP  # 1 200 000 сум за кв.м
+    depth_text = "От 40 до 60 см"
+
   brand_addon = PRICES["Egger"] if data["mat_brand"] == "egger" else 0
   door_price = (
       PRICES["doors_ldsp"] if data["doors"] == "ldsp" else PRICES["doors_mirror"]
@@ -259,7 +296,7 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
   rods_cost = data["rods"] * PRICES["rod"]
   total_price = round(base_cost + door_price + drawers_cost + rods_cost)
 
-  await state.update_data(total_price=total_price)
+  await state.update_data(total_price=total_price, depth_text=depth_text)
 
   contact_kb = ReplyKeyboardMarkup(
       keyboard=[[KeyboardButton(text="📱 Отправить мой номер", request_contact=True)]],
@@ -270,7 +307,7 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
   text = (
       f"📊 **Предварительный расчет:**\n"
       f"• Тип: {data['cabinet_type'].capitalize()}\n"
-      f"• Размеры: {w} × {h} мм\n"
+      f"• Размеры: {w} × {h} мм (Глубина: {depth_text})\n"
       f"• Материал: {data['mat_type'].upper()} ({data['mat_brand'].capitalize()})\n"
       f"• Ящики: {data['drawers']} шт. | Штанги: {data['rods']} шт.\n"
       f"• Фасады: {'Зеркало' if data['doors']=='mirror' else 'ЛДСП'}\n\n"
@@ -294,6 +331,7 @@ async def process_contact(message: Message, state: FSMContext, bot: Bot):
       f"📞 Телефон: `{contact.phone_number}`\n\n"
       f"📐 Параметры:\n"
       f"• ШхВ: {data['width']} × {data['height']} мм\n"
+      f"• Глубина: {data['depth_text']}\n"
       f"• Материал: {data['mat_type'].upper()} ({data['mat_brand']})\n"
       f"• Ящики: {data['drawers']} | Штанги: {data['rods']}\n"
       f"• Фасады: {data['doors']}\n"
@@ -312,7 +350,7 @@ async def main():
   bot = Bot(token=TOKEN)
   dp = Dispatcher()
   dp.include_router(router)
-  print("Бот запущен!")
+  print("Бот запущен с новой формулой!")
   await dp.start_polling(bot)
 
 
