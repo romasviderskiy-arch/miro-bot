@@ -36,8 +36,8 @@ class CalculatorStates(StatesGroup):
 
 
 # Базовые цены за 1 кв.м в зависимости от глубины (в сумах)
-PRICE_SHALLOW = 1000000  # Глубина до 40 см
-PRICE_DEEP = 1200000  # Глубина от 40 до 60 см
+PRICE_SHALLOW = 1000000  # Глубина до 40 см (400 мм)
+PRICE_DEEP = 1200000  # Глубина больше 40 см
 
 PRICES = {
     "Egger": 150000,
@@ -60,14 +60,17 @@ TEXTS = {
         "type_kupe": "🗄 Шкаф-купе",
         "type_rasp": "🚪 Распашной",
         "width_btn": (
-            "Выберите ширину шкафа из списка или введите точное число в мм"
-            " (например: *1450*):"
+            "Выберите ширину из списка или введите точное число в мм (например:"
+            " *1450*):"
         ),
         "height_btn": (
-            "Выберите высоту шкафа из списка или введите точное число в мм"
-            " (например: *2500*):"
+            "Выберите высоту из списка или введите точное число в мм (например:"
+            " *2500*):"
         ),
-        "depth_btn": "Выберите глубину шкафа:",
+        "depth_btn": (
+            "Выберите глубину из списка или введите точное число в мм"
+            " (например: *500*):"
+        ),
         "depth_shallow": "До 40 см (400 мм)",
         "depth_deep": "От 40 до 60 см (600 мм)",
         "mat_btn": "Выберите материал корпуса и бренд:",
@@ -101,14 +104,17 @@ TEXTS = {
         "type_kupe": "🗄 Kupe shkaf",
         "type_rasp": "🚪 Ochiladigan shkaf",
         "width_btn": (
-            "Ro'yxatdan kenglikni tanlang yoki aniq o'lchamni mm da kiriting"
-            " (masalan: *1450*):"
+            "Kenglikni tanlang yoki aniq o'lchamni mm da kiriting (masalan:"
+            " *1450*):"
         ),
         "height_btn": (
-            "Ro'yxatdan balandlikni tanlang yoki aniq o'lchamni mm da kiriting"
-            " (masalan: *2500*):"
+            "Balandlikni tanlang yoki aniq o'lchamni mm da kiriting (masalan:"
+            " *2500*):"
         ),
-        "depth_btn": "Shkafning chuqurligini tanlang:",
+        "depth_btn": (
+            "Chuqurlikni tanlang yoki aniq o'lchamni mm da kiriting (masalan:"
+            " *500*):"
+        ),
         "depth_shallow": "40 sm gacha (400 mm)",
         "depth_deep": "40 dan 60 sm gacha (600 mm)",
         "mat_btn": "Kuzov materiali va brendini tanlang:",
@@ -206,7 +212,7 @@ async def process_type(callback: CallbackQuery, state: FSMContext):
   await callback.answer()
 
 
-# Обработка ширины (и через нажатие кнопки, и через текст)
+# Обработка ширины
 @router.callback_query(
     CalculatorStates.waiting_for_width, F.data.startswith("w_")
 )
@@ -255,7 +261,7 @@ async def ask_height(message: Message, state: FSMContext):
   await state.set_state(CalculatorStates.waiting_for_height)
 
 
-# Обработка высоты (и через нажатие кнопки, и через текст)
+# Обработка высоты
 @router.callback_query(
     CalculatorStates.waiting_for_height, F.data.startswith("h_")
 )
@@ -288,20 +294,52 @@ async def ask_depth(message: Message, state: FSMContext):
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
-          [InlineKeyboardButton(text=t["depth_shallow"], callback_data="depth_350")],
-          [InlineKeyboardButton(text=t["depth_deep"], callback_data="depth_550")],
+          [
+              InlineKeyboardButton(
+                  text="До 40 см (400 мм)", callback_data="depth_350"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text="От 40 до 60 см (600 мм)", callback_data="depth_550"
+              )
+          ],
       ]
   )
-  await message.answer(t["depth_btn"], reply_markup=keyboard)
+  await message.answer(
+      t["depth_btn"], reply_markup=keyboard, parse_mode="Markdown"
+  )
   await state.set_state(CalculatorStates.waiting_for_depth)
 
 
+# Обработка глубины (и кнопки, и свободный ввод цифрой)
 @router.callback_query(
     CalculatorStates.waiting_for_depth, F.data.startswith("depth_")
 )
-async def process_depth(callback: CallbackQuery, state: FSMContext):
+async def process_depth_callback(callback: CallbackQuery, state: FSMContext):
   depth = int(callback.data.split("_")[1])
   await state.update_data(depth=depth)
+  await ask_material(callback.message, state)
+  await callback.answer()
+
+
+@router.message(CalculatorStates.waiting_for_depth)
+async def process_depth_text(message: Message, state: FSMContext):
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
+  try:
+    depth = int(message.text.strip())
+    if depth <= 100 or depth > 1200:
+      raise ValueError()
+  except ValueError:
+    await message.answer(t["error_num"])
+    return
+
+  await state.update_data(depth=depth)
+  await ask_material(message, state)
+
+
+async def ask_material(message: Message, state: FSMContext):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
 
@@ -319,9 +357,8 @@ async def process_depth(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(t["mat_btn"], reply_markup=keyboard)
+  await message.answer(t["mat_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_material)
-  await callback.answer()
 
 
 @router.callback_query(
@@ -450,15 +487,20 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
   depth = data["depth"]
   area = (w * h) / 1000000
 
+  # Автоматический выбор тарифа в зависимости от глубины
   if depth <= 400:
     base_rate = PRICE_SHALLOW
     depth_text = (
-        "До 40 см" if data["lang"] == "ru" else "40 sm gacha (400 mm)"
+        f"{depth} мм (До 40 см)"
+        if data["lang"] == "ru"
+        else f"{depth} mm (40 sm gacha)"
     )
   else:
     base_rate = PRICE_DEEP
     depth_text = (
-        "От 40 до 60 см" if data["lang"] == "ru" else "40 dan 60 sm gacha"
+        f"{depth} мм (Глубокий)"
+        if data["lang"] == "ru"
+        else f"{depth} mm (Chuqur)"
     )
 
   brand_addon = PRICES["Egger"] if data["mat_brand"] == "egger" else 0
@@ -541,7 +583,7 @@ async def process_contact(message: Message, state: FSMContext, bot: Bot):
 
 # Веб-сервер для удержания порта на Render
 async def handle_ping(request):
-  return web.Response(text="Bot is running with custom size input!")
+  return web.Response(text="Bot is running with custom depth input!")
 
 
 async def web_server():
@@ -562,7 +604,7 @@ async def main():
   dp.include_router(router)
 
   await web_server()
-  print("Бот с возможностью ввода своих размеров запущен!")
+  print("Бот с возможностью ввода своей глубины запущен!")
   await dp.start_polling(bot)
 
 
