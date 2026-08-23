@@ -27,13 +27,13 @@ class CalculatorStates(StatesGroup):
   waiting_for_width = State()
   waiting_for_height = State()
   waiting_for_depth = State()
-  waiting_for_material_type = State()  # ЛДСП или ЛМДФ
-  waiting_for_material_brand = State()  # Ultradecor или Egger
+  waiting_for_material_type = State()
+  waiting_for_material_brand = State()
   waiting_for_hardware = State()
   waiting_for_drawers = State()
   waiting_for_rods = State()
-  waiting_for_doors_type = State()  # Фасады (ЛДСП, ЛМДФ, Акрил)
-  waiting_for_doors_finish = State()  # Глянец или матовый (если акрил)
+  waiting_for_doors_type = State()
+  waiting_for_doors_finish = State()
   waiting_for_contact = State()
 
 
@@ -92,6 +92,7 @@ TEXTS = {
         "doors_type_btn": "Какие фасады планируются?",
         "doors_finish_btn": "Выберите тип покрытия для акриловых фасадов:",
         "contact_btn": "📱 Отправить мой номер",
+        "back_btn": "⬅️ Назад",
         "result": (
             "📊 **Предварительный расчет:**\n• Тип: {type}\n• Размеры: {w} ×"
             " {h} мм (Глубина: {depth_t})\n• Корпус: {mat_t} ({mat_b})\n•"
@@ -141,6 +142,7 @@ TEXTS = {
         "doors_btn": "Qanday fasadlar rejalashtirilgan?",
         "doors_finish_btn": "Akril fasadlar uchun qoplama turini tanlang:",
         "contact_btn": "📱 Raqamimni yuborish",
+        "back_btn": "⬅️ Orqaga",
         "result": (
             "📊 **Dastlabki hisob-kitob:**\n• Turi: {type}\n• O'lchamlari: {w} ×"
             " {h} mm (Chuqurligi: {depth_t})\n• Kuzov: {mat_t} ({mat_b})\n•"
@@ -201,6 +203,29 @@ async def process_lang(callback: CallbackQuery, state: FSMContext):
   await callback.answer()
 
 
+# Кнопка НАЗАД (возврат к выбору типа шкафа)
+@router.callback_query(F.data == "back_to_type")
+async def back_to_type(callback: CallbackQuery, state: FSMContext):
+  data = await state.get_data()
+  lang = data.get("lang", "ru")
+  t = TEXTS[lang]
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text=t["type_kupe"], callback_data="type_купе"
+              ),
+              InlineKeyboardButton(
+                  text=t["type_rasp"], callback_data="type_распашной"
+              ),
+          ]
+      ]
+  )
+  await callback.message.edit_text(t["type"], reply_markup=keyboard)
+  await state.set_state(CalculatorStates.waiting_for_type)
+  await callback.answer()
+
+
 @router.callback_query(
     CalculatorStates.waiting_for_type, F.data.startswith("type_")
 )
@@ -219,6 +244,11 @@ async def process_type(callback: CallbackQuery, state: FSMContext):
           [
               InlineKeyboardButton(text="1800 мм", callback_data="w_1800"),
               InlineKeyboardButton(text="2400 мм", callback_data="w_2400"),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_type"
+              )
           ],
       ]
   )
@@ -269,12 +299,50 @@ async def ask_height(message: Message, state: FSMContext):
               InlineKeyboardButton(text="2400 мм", callback_data="h_2400"),
               InlineKeyboardButton(text="2700 мм", callback_data="h_2700"),
           ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_width"
+              )
+          ],
       ]
   )
-  await message.answer(
-      t["height_btn"], reply_markup=keyboard, parse_mode="Markdown"
-  )
+  if isinstance(message, Message):
+    await message.answer(
+        t["height_btn"], reply_markup=keyboard, parse_mode="Markdown"
+    )
+  else:
+    await message.edit_text(
+        t["height_btn"], reply_markup=keyboard, parse_mode="Markdown"
+    )
   await state.set_state(CalculatorStates.waiting_for_height)
+
+
+@router.callback_query(F.data == "back_to_width")
+async def back_to_width(callback: CallbackQuery, state: FSMContext):
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(text="1200 мм", callback_data="w_1200"),
+              InlineKeyboardButton(text="1600 мм", callback_data="w_1600"),
+          ],
+          [
+              InlineKeyboardButton(text="1800 мм", callback_data="w_1800"),
+              InlineKeyboardButton(text="2400 мм", callback_data="w_2400"),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_type"
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(
+      t["width_btn"], reply_markup=keyboard, parse_mode="Markdown"
+  )
+  await state.set_state(CalculatorStates.waiting_for_width)
+  await callback.answer()
 
 
 @router.callback_query(
@@ -319,12 +387,28 @@ async def ask_depth(message: Message, state: FSMContext):
                   text="От 40 до 60 см (600 мм)", callback_data="depth_550"
               )
           ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_height"
+              )
+          ],
       ]
   )
-  await message.answer(
-      t["depth_btn"], reply_markup=keyboard, parse_mode="Markdown"
-  )
+  if isinstance(message, Message):
+    await message.answer(
+        t["depth_btn"], reply_markup=keyboard, parse_mode="Markdown"
+    )
+  else:
+    await message.edit_text(
+        t["depth_btn"], reply_markup=keyboard, parse_mode="Markdown"
+    )
   await state.set_state(CalculatorStates.waiting_for_depth)
+
+
+@router.callback_query(F.data == "back_to_height")
+async def back_to_height(callback: CallbackQuery, state: FSMContext):
+  await ask_height(callback.message, state)
+  await callback.answer()
 
 
 @router.callback_query(
@@ -361,10 +445,24 @@ async def ask_material_type(message: Message, state: FSMContext):
       inline_keyboard=[
           [InlineKeyboardButton(text="ЛДСП", callback_data="mtype_ldsp")],
           [InlineKeyboardButton(text="ЛМДФ", callback_data="mtype_lmdf")],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_depth"
+              )
+          ],
       ]
   )
-  await message.answer(t["mat_type_btn"], reply_markup=keyboard)
+  if isinstance(message, Message):
+    await message.answer(t["mat_type_btn"], reply_markup=keyboard)
+  else:
+    await message.edit_text(t["mat_type_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_material_type)
+
+
+@router.callback_query(F.data == "back_to_depth")
+async def back_to_depth(callback: CallbackQuery, state: FSMContext):
+  await ask_depth(callback.message, state)
+  await callback.answer()
 
 
 @router.callback_query(
@@ -384,10 +482,21 @@ async def process_material_type(callback: CallbackQuery, state: FSMContext):
               )
           ],
           [InlineKeyboardButton(text="Egger", callback_data="mbrand_egger")],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_mtype"
+              )
+          ],
       ]
   )
   await callback.message.edit_text(t["mat_brand_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_material_brand)
+  await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_mtype")
+async def back_to_mtype(callback: CallbackQuery, state: FSMContext):
+  await ask_material_type(callback.message, state)
   await callback.answer()
 
 
@@ -412,12 +521,41 @@ async def process_material_brand(callback: CallbackQuery, state: FSMContext):
                   text="💎 Премиум (Hettich, Blum)", callback_data="hw_premium"
               )
           ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_mbrand"
+              )
+          ],
       ]
   )
   await callback.message.edit_text(
       t["hw_btn"], reply_markup=keyboard, parse_mode="Markdown"
   )
   await state.set_state(CalculatorStates.waiting_for_hardware)
+  await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_mbrand")
+async def back_to_mbrand(callback: CallbackQuery, state: FSMContext):
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text="Ultradecor", callback_data="mbrand_ultradecor"
+              )
+          ],
+          [InlineKeyboardButton(text="Egger", callback_data="mbrand_egger")],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_mtype"
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(t["mat_brand_btn"], reply_markup=keyboard)
+  await state.set_state(CalculatorStates.waiting_for_material_brand)
   await callback.answer()
 
 
@@ -436,11 +574,46 @@ async def process_hardware(callback: CallbackQuery, state: FSMContext):
               InlineKeyboardButton(text="0 шт.", callback_data="drawers_0"),
               InlineKeyboardButton(text="2 шт.", callback_data="drawers_2"),
               InlineKeyboardButton(text="4 шт.", callback_data="drawers_4"),
-          ]
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_hw"
+              )
+          ],
       ]
   )
   await callback.message.edit_text(t["drawers_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_drawers)
+  await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_hw")
+async def back_to_hw(callback: CallbackQuery, state: FSMContext):
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text="⚙️ Стандарт (Samet, Gtv, Dtc)", callback_data="hw_standard"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text="💎 Премиум (Hettich, Blum)", callback_data="hw_premium"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_mbrand"
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(
+      t["hw_btn"], reply_markup=keyboard, parse_mode="Markdown"
+  )
+  await state.set_state(CalculatorStates.waiting_for_hardware)
   await callback.answer()
 
 
@@ -458,11 +631,39 @@ async def process_drawers(callback: CallbackQuery, state: FSMContext):
           [
               InlineKeyboardButton(text="1 шт.", callback_data="rods_1"),
               InlineKeyboardButton(text="2 шт.", callback_data="rods_2"),
-          ]
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_drawers"
+              )
+          ],
       ]
   )
   await callback.message.edit_text(t["rods_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_rods)
+  await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_drawers")
+async def back_to_drawers(callback: CallbackQuery, state: FSMContext):
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(text="0 шт.", callback_data="drawers_0"),
+              InlineKeyboardButton(text="2 шт.", callback_data="drawers_2"),
+              InlineKeyboardButton(text="4 шт.", callback_data="drawers_4"),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_hw"
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(t["drawers_btn"], reply_markup=keyboard)
+  await state.set_state(CalculatorStates.waiting_for_drawers)
   await callback.answer()
 
 
@@ -492,10 +693,37 @@ async def process_rods(callback: CallbackQuery, state: FSMContext):
                   text="Акриловые фасады", callback_data="doors_acrylic"
               )
           ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_rods"
+              )
+          ],
       ]
   )
   await callback.message.edit_text(t["doors_type_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_doors_type)
+  await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_rods")
+async def back_to_rods(callback: CallbackQuery, state: FSMContext):
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(text="1 шт.", callback_data="rods_1"),
+              InlineKeyboardButton(text="2 шт.", callback_data="rods_2"),
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_drawers"
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(t["rods_btn"], reply_markup=keyboard)
+  await state.set_state(CalculatorStates.waiting_for_rods)
   await callback.answer()
 
 
@@ -527,6 +755,11 @@ async def process_doors_type(callback: CallbackQuery, state: FSMContext):
                     callback_data="finish_mat",
                 )
             ],
+            [
+                InlineKeyboardButton(
+                    text=t["back_btn"], callback_data="back_to_doors_type"
+                )
+            ],
         ]
     )
     await callback.message.edit_text(
@@ -537,6 +770,39 @@ async def process_doors_type(callback: CallbackQuery, state: FSMContext):
   else:
     await finish_calculation(callback.message, state)
     await callback.answer()
+
+
+@router.callback_query(F.data == "back_to_doors_type")
+async def back_to_doors_type(callback: CallbackQuery, state: FSMContext):
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
+              InlineKeyboardButton(
+                  text="ЛДСП (в цвет корпуса)", callback_data="doors_ldsp"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text="ЛМДФ (в цвет корпуса)", callback_data="doors_lmdf"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text="Акриловые фасады", callback_data="doors_acrylic"
+              )
+          ],
+          [
+              InlineKeyboardButton(
+                  text=t["back_btn"], callback_data="back_to_rods"
+              )
+          ],
+      ]
+  )
+  await callback.message.edit_text(t["doors_type_btn"], reply_markup=keyboard)
+  await state.set_state(CalculatorStates.waiting_for_doors_type)
+  await callback.answer()
 
 
 @router.callback_query(
@@ -559,40 +825,29 @@ async def finish_calculation(message: Message, state: FSMContext):
   depth = data["depth"]
   area = (w * h) / 1000000
 
-  # Базовая цена за кв.м в зависимости от материала и бренда
   mat_key = f"{data['mat_type']}_{data['mat_brand']}"
   base_rate = BASE_PRICES.get(mat_key, 1000000)
 
-  # Если глубина больше 400 мм -> +10%
   if depth > 400:
     base_rate = base_rate * 1.1
 
   base_cost = area * base_rate
 
-  # Стоимость ящиков
   drawer_price_per_unit = (
       PRICES["drawer_premium"]
       if data["hardware"] == "premium"
       else PRICES["drawer_standard"]
   )
   drawers_cost = data["drawers"] * drawer_price_per_unit
-
-  # Стоимость штанг
   rods_cost = data["rods"] * PRICES["rod"]
 
-  # Расчет симметричных фасадов (ширина каждого не менее 380 мм)
-  # Находим оптимальное количество фасадов (начинаем с минимально возможного деления, чтобы ширина была >= 380)
   num_doors = max(2, round(w / 500))
   while (w / num_doors) < 380 and num_doors > 1:
     num_doors -= 1
-  # Если ширина очень большая, подбираем четное или симметричное число
   while (w / num_doors) > 650:
     num_doors += 1
 
-  # На каждый фасад идет 4 петли
   hinges_per_door = 4
-
-  # Если высота шкафа более 2300 мм, добавляется отсек с антресолями (еще +4 петли на каждый фасад)
   if h > 2300:
     hinges_per_door += 4
 
@@ -604,7 +859,6 @@ async def finish_calculation(message: Message, state: FSMContext):
   )
   hinges_cost = total_hinges * hinge_unit_price
 
-  # Стоимость фасадов
   dtype = data["doors_type"]
   if dtype == "ldsp":
     door_unit = PRICES["doors_ldsp"]
@@ -621,7 +875,6 @@ async def finish_calculation(message: Message, state: FSMContext):
     door_unit = PRICES["doors_ldsp"]
 
   doors_cost = area * door_unit
-
   total_price = round(
       base_cost + drawers_cost + rods_cost + hinges_cost + doors_cost
   )
@@ -714,9 +967,7 @@ async def process_contact(message: Message, state: FSMContext, bot: Bot):
 
 # Веб-сервер для удержания порта на Render
 async def handle_ping(request):
-  return web.Response(
-      text="Bot is running with symmetric doors and custom hinges!"
-  )
+  return web.Response(text="Bot is running with back button support!")
 
 
 async def web_server():
@@ -737,7 +988,7 @@ async def main():
   dp.include_router(router)
 
   await web_server()
-  print("Бот с симметричным расчетом фасадов и петель запущен!")
+  print("Бот с кнопкой возврата запущен!")
   await dp.start_polling(bot)
 
 
