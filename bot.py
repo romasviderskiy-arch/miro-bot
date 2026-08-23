@@ -15,6 +15,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
+
 TOKEN = "8886678281:AAEGB93zbn_TLlN-81GbxXAAWGnhtIkuDpM"
 ADMIN_ID = 2617518
 
@@ -184,28 +185,11 @@ async def cmd_start(message: Message, state: FSMContext):
 async def process_lang(callback: CallbackQuery, state: FSMContext):
   lang = callback.data.split("_")[1]
   await state.update_data(lang=lang)
-
-  t = TEXTS[lang]
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text=t["type_kupe"], callback_data="type_купе"
-              ),
-              InlineKeyboardButton(
-                  text=t["type_rasp"], callback_data="type_распашной"
-              ),
-          ]
-      ]
-  )
-  await callback.message.edit_text(t["type"], reply_markup=keyboard)
-  await state.set_state(CalculatorStates.waiting_for_type)
+  await show_type_step(callback.message, state, edit=True)
   await callback.answer()
 
 
-# Кнопка НАЗАД (возврат к выбору типа шкафа)
-@router.callback_query(F.data == "back_to_type")
-async def back_to_type(callback: CallbackQuery, state: FSMContext):
+async def show_type_step(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   lang = data.get("lang", "ru")
   t = TEXTS[lang]
@@ -221,8 +205,16 @@ async def back_to_type(callback: CallbackQuery, state: FSMContext):
           ]
       ]
   )
-  await callback.message.edit_text(t["type"], reply_markup=keyboard)
+  if edit:
+    await message.edit_text(t["type"], reply_markup=keyboard)
+  else:
+    await message.answer(t["type"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_type)
+
+
+@router.callback_query(F.data == "back_to_type")
+async def back_to_type(callback: CallbackQuery, state: FSMContext):
+  await show_type_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -232,9 +224,13 @@ async def back_to_type(callback: CallbackQuery, state: FSMContext):
 async def process_type(callback: CallbackQuery, state: FSMContext):
   cabinet_type = callback.data.split("_")[1]
   await state.update_data(cabinet_type=cabinet_type)
+  await show_width_step(callback.message, state, edit=True)
+  await callback.answer()
+
+
+async def show_width_step(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
-
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -252,10 +248,20 @@ async def process_type(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(
-      t["width_btn"], reply_markup=keyboard, parse_mode="Markdown"
-  )
+  if edit:
+    await message.edit_text(
+        t["width_btn"], reply_markup=keyboard, parse_mode="Markdown"
+    )
+  else:
+    await message.answer(
+        t["width_btn"], reply_markup=keyboard, parse_mode="Markdown"
+    )
   await state.set_state(CalculatorStates.waiting_for_width)
+
+
+@router.callback_query(F.data == "back_to_width")
+async def back_to_width(callback: CallbackQuery, state: FSMContext):
+  await show_width_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -265,7 +271,7 @@ async def process_type(callback: CallbackQuery, state: FSMContext):
 async def process_width_callback(callback: CallbackQuery, state: FSMContext):
   width = int(callback.data.split("_")[1])
   await state.update_data(width=width)
-  await ask_height(callback.message, state)
+  await show_height_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -281,14 +287,14 @@ async def process_width_text(message: Message, state: FSMContext):
     await message.answer(t["error_num"])
     return
 
+  await message.delete()  # Удаляем сообщение пользователя с цифрой для чистоты чата
   await state.update_data(width=width)
-  await ask_height(message, state)
+  await show_height_step(message, state, edit=False)
 
 
-async def ask_height(message: Message, state: FSMContext):
+async def show_height_step(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
-
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -306,42 +312,20 @@ async def ask_height(message: Message, state: FSMContext):
           ],
       ]
   )
-  if isinstance(message, Message):
-    await message.answer(
+  if edit:
+    await message.edit_text(
         t["height_btn"], reply_markup=keyboard, parse_mode="Markdown"
     )
   else:
-    await message.edit_text(
+    await message.answer(
         t["height_btn"], reply_markup=keyboard, parse_mode="Markdown"
     )
   await state.set_state(CalculatorStates.waiting_for_height)
 
 
-@router.callback_query(F.data == "back_to_width")
-async def back_to_width(callback: CallbackQuery, state: FSMContext):
-  data = await state.get_data()
-  t = TEXTS[data["lang"]]
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(text="1200 мм", callback_data="w_1200"),
-              InlineKeyboardButton(text="1600 мм", callback_data="w_1600"),
-          ],
-          [
-              InlineKeyboardButton(text="1800 мм", callback_data="w_1800"),
-              InlineKeyboardButton(text="2400 мм", callback_data="w_2400"),
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["back_btn"], callback_data="back_to_type"
-              )
-          ],
-      ]
-  )
-  await callback.message.edit_text(
-      t["width_btn"], reply_markup=keyboard, parse_mode="Markdown"
-  )
-  await state.set_state(CalculatorStates.waiting_for_width)
+@router.callback_query(F.data == "back_to_height")
+async def back_to_height(callback: CallbackQuery, state: FSMContext):
+  await show_height_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -351,7 +335,7 @@ async def back_to_width(callback: CallbackQuery, state: FSMContext):
 async def process_height_callback(callback: CallbackQuery, state: FSMContext):
   height = int(callback.data.split("_")[1])
   await state.update_data(height=height)
-  await ask_depth(callback.message, state)
+  await show_depth_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -367,14 +351,14 @@ async def process_height_text(message: Message, state: FSMContext):
     await message.answer(t["error_num"])
     return
 
+  await message.delete()
   await state.update_data(height=height)
-  await ask_depth(message, state)
+  await show_depth_step(message, state, edit=False)
 
 
-async def ask_depth(message: Message, state: FSMContext):
+async def show_depth_step(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
-
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -394,20 +378,20 @@ async def ask_depth(message: Message, state: FSMContext):
           ],
       ]
   )
-  if isinstance(message, Message):
-    await message.answer(
+  if edit:
+    await message.edit_text(
         t["depth_btn"], reply_markup=keyboard, parse_mode="Markdown"
     )
   else:
-    await message.edit_text(
+    await message.answer(
         t["depth_btn"], reply_markup=keyboard, parse_mode="Markdown"
     )
   await state.set_state(CalculatorStates.waiting_for_depth)
 
 
-@router.callback_query(F.data == "back_to_height")
-async def back_to_height(callback: CallbackQuery, state: FSMContext):
-  await ask_height(callback.message, state)
+@router.callback_query(F.data == "back_to_depth")
+async def back_to_depth(callback: CallbackQuery, state: FSMContext):
+  await show_depth_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -417,7 +401,7 @@ async def back_to_height(callback: CallbackQuery, state: FSMContext):
 async def process_depth_callback(callback: CallbackQuery, state: FSMContext):
   depth = int(callback.data.split("_")[1])
   await state.update_data(depth=depth)
-  await ask_material_type(callback.message, state)
+  await show_material_type_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -433,12 +417,15 @@ async def process_depth_text(message: Message, state: FSMContext):
     await message.answer(t["error_num"])
     return
 
+  await message.delete()
   await state.update_data(depth=depth)
-  await ask_material_type(message, state)
+  await show_material_type_step(message, state, edit=False)
 
 
-# --- ВЫБОР МАТЕРИАЛА ---
-async def ask_material_type(message: Message, state: FSMContext):
+# --- ТИП МАТЕРИАЛА ---
+async def show_material_type_step(
+    message: Message, state: FSMContext, edit=False
+):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
   keyboard = InlineKeyboardMarkup(
@@ -452,16 +439,16 @@ async def ask_material_type(message: Message, state: FSMContext):
           ],
       ]
   )
-  if isinstance(message, Message):
-    await message.answer(t["mat_type_btn"], reply_markup=keyboard)
-  else:
+  if edit:
     await message.edit_text(t["mat_type_btn"], reply_markup=keyboard)
+  else:
+    await message.answer(t["mat_type_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_material_type)
 
 
-@router.callback_query(F.data == "back_to_depth")
-async def back_to_depth(callback: CallbackQuery, state: FSMContext):
-  await ask_depth(callback.message, state)
+@router.callback_query(F.data == "back_to_mtype")
+async def back_to_mtype(callback: CallbackQuery, state: FSMContext):
+  await show_material_type_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -471,9 +458,16 @@ async def back_to_depth(callback: CallbackQuery, state: FSMContext):
 async def process_material_type(callback: CallbackQuery, state: FSMContext):
   mtype = callback.data.split("_")[1]
   await state.update_data(mat_type=mtype)
+  await show_material_brand_step(callback.message, state, edit=True)
+  await callback.answer()
+
+
+# --- БРЕНД МАТЕРИАЛА ---
+async def show_material_brand_step(
+    message: Message, state: FSMContext, edit=False
+):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
-
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -489,14 +483,16 @@ async def process_material_type(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(t["mat_brand_btn"], reply_markup=keyboard)
+  if edit:
+    await message.edit_text(t["mat_brand_btn"], reply_markup=keyboard)
+  else:
+    await message.answer(t["mat_brand_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_material_brand)
-  await callback.answer()
 
 
-@router.callback_query(F.data == "back_to_mtype")
-async def back_to_mtype(callback: CallbackQuery, state: FSMContext):
-  await ask_material_type(callback.message, state)
+@router.callback_query(F.data == "back_to_mbrand")
+async def back_to_mbrand(callback: CallbackQuery, state: FSMContext):
+  await show_material_brand_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -506,9 +502,14 @@ async def back_to_mtype(callback: CallbackQuery, state: FSMContext):
 async def process_material_brand(callback: CallbackQuery, state: FSMContext):
   mbrand = callback.data.split("_")[1]
   await state.update_data(mat_brand=mbrand)
+  await show_hardware_step(callback.message, state, edit=True)
+  await callback.answer()
+
+
+# --- ФУРНИТУРА ---
+async def show_hardware_step(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
-
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -528,34 +529,20 @@ async def process_material_brand(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(
-      t["hw_btn"], reply_markup=keyboard, parse_mode="Markdown"
-  )
+  if edit:
+    await message.edit_text(
+        t["hw_btn"], reply_markup=keyboard, parse_mode="Markdown"
+    )
+  else:
+    await message.answer(
+        t["hw_btn"], reply_markup=keyboard, parse_mode="Markdown"
+    )
   await state.set_state(CalculatorStates.waiting_for_hardware)
-  await callback.answer()
 
 
-@router.callback_query(F.data == "back_to_mbrand")
-async def back_to_mbrand(callback: CallbackQuery, state: FSMContext):
-  data = await state.get_data()
-  t = TEXTS[data["lang"]]
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text="Ultradecor", callback_data="mbrand_ultradecor"
-              )
-          ],
-          [InlineKeyboardButton(text="Egger", callback_data="mbrand_egger")],
-          [
-              InlineKeyboardButton(
-                  text=t["back_btn"], callback_data="back_to_mtype"
-              )
-          ],
-      ]
-  )
-  await callback.message.edit_text(t["mat_brand_btn"], reply_markup=keyboard)
-  await state.set_state(CalculatorStates.waiting_for_material_brand)
+@router.callback_query(F.data == "back_to_hw")
+async def back_to_hw(callback: CallbackQuery, state: FSMContext):
+  await show_hardware_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -565,9 +552,14 @@ async def back_to_mbrand(callback: CallbackQuery, state: FSMContext):
 async def process_hardware(callback: CallbackQuery, state: FSMContext):
   hardware = callback.data.split("_")[1]
   await state.update_data(hardware=hardware)
+  await show_drawers_step(callback.message, state, edit=True)
+  await callback.answer()
+
+
+# --- ЯЩИКИ ---
+async def show_drawers_step(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
-
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -582,38 +574,16 @@ async def process_hardware(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(t["drawers_btn"], reply_markup=keyboard)
+  if edit:
+    await message.edit_text(t["drawers_btn"], reply_markup=keyboard)
+  else:
+    await message.answer(t["drawers_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_drawers)
-  await callback.answer()
 
 
-@router.callback_query(F.data == "back_to_hw")
-async def back_to_hw(callback: CallbackQuery, state: FSMContext):
-  data = await state.get_data()
-  t = TEXTS[data["lang"]]
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text="⚙️ Стандарт (Samet, Gtv, Dtc)", callback_data="hw_standard"
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="💎 Премиум (Hettich, Blum)", callback_data="hw_premium"
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["back_btn"], callback_data="back_to_mbrand"
-              )
-          ],
-      ]
-  )
-  await callback.message.edit_text(
-      t["hw_btn"], reply_markup=keyboard, parse_mode="Markdown"
-  )
-  await state.set_state(CalculatorStates.waiting_for_hardware)
+@router.callback_query(F.data == "back_to_drawers")
+async def back_to_drawers(callback: CallbackQuery, state: FSMContext):
+  await show_drawers_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -623,9 +593,14 @@ async def back_to_hw(callback: CallbackQuery, state: FSMContext):
 async def process_drawers(callback: CallbackQuery, state: FSMContext):
   drawers = int(callback.data.split("_")[1])
   await state.update_data(drawers=drawers)
+  await show_rods_step(callback.message, state, edit=True)
+  await callback.answer()
+
+
+# --- ШТАНГИ ---
+async def show_rods_step(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
-
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -639,31 +614,16 @@ async def process_drawers(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(t["rods_btn"], reply_markup=keyboard)
+  if edit:
+    await message.edit_text(t["rods_btn"], reply_markup=keyboard)
+  else:
+    await message.answer(t["rods_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_rods)
-  await callback.answer()
 
 
-@router.callback_query(F.data == "back_to_drawers")
-async def back_to_drawers(callback: CallbackQuery, state: FSMContext):
-  data = await state.get_data()
-  t = TEXTS[data["lang"]]
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(text="0 шт.", callback_data="drawers_0"),
-              InlineKeyboardButton(text="2 шт.", callback_data="drawers_2"),
-              InlineKeyboardButton(text="4 шт.", callback_data="drawers_4"),
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["back_btn"], callback_data="back_to_hw"
-              )
-          ],
-      ]
-  )
-  await callback.message.edit_text(t["drawers_btn"], reply_markup=keyboard)
-  await state.set_state(CalculatorStates.waiting_for_drawers)
+@router.callback_query(F.data == "back_to_rods")
+async def back_to_rods(callback: CallbackQuery, state: FSMContext):
+  await show_rods_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -673,9 +633,14 @@ async def back_to_drawers(callback: CallbackQuery, state: FSMContext):
 async def process_rods(callback: CallbackQuery, state: FSMContext):
   rods = int(callback.data.split("_")[1])
   await state.update_data(rods=rods)
+  await show_doors_type_step(callback.message, state, edit=True)
+  await callback.answer()
+
+
+# --- ФАСАДЫ ---
+async def show_doors_type_step(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
-
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
@@ -700,30 +665,16 @@ async def process_rods(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(t["doors_type_btn"], reply_markup=keyboard)
+  if edit:
+    await message.edit_text(t["doors_type_btn"], reply_markup=keyboard)
+  else:
+    await message.answer(t["doors_type_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_doors_type)
-  await callback.answer()
 
 
-@router.callback_query(F.data == "back_to_rods")
-async def back_to_rods(callback: CallbackQuery, state: FSMContext):
-  data = await state.get_data()
-  t = TEXTS[data["lang"]]
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(text="1 шт.", callback_data="rods_1"),
-              InlineKeyboardButton(text="2 шт.", callback_data="rods_2"),
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["back_btn"], callback_data="back_to_drawers"
-              )
-          ],
-      ]
-  )
-  await callback.message.edit_text(t["rods_btn"], reply_markup=keyboard)
-  await state.set_state(CalculatorStates.waiting_for_rods)
+@router.callback_query(F.data == "back_to_doors_type")
+async def back_to_doors_type(callback: CallbackQuery, state: FSMContext):
+  await show_doors_type_step(callback.message, state, edit=True)
   await callback.answer()
 
 
@@ -762,47 +713,12 @@ async def process_doors_type(callback: CallbackQuery, state: FSMContext):
             ],
         ]
     )
-    await callback.message.edit_text(
-        t["doors_finish_btn"], reply_markup=keyboard
-    )
+    await message.edit_text(t["doors_finish_btn"], reply_markup=keyboard)
     await state.set_state(CalculatorStates.waiting_for_doors_finish)
     await callback.answer()
   else:
-    await finish_calculation(callback.message, state)
+    await finish_calculation(callback.message, state, edit=True)
     await callback.answer()
-
-
-@router.callback_query(F.data == "back_to_doors_type")
-async def back_to_doors_type(callback: CallbackQuery, state: FSMContext):
-  data = await state.get_data()
-  t = TEXTS[data["lang"]]
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text="ЛДСП (в цвет корпуса)", callback_data="doors_ldsp"
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="ЛМДФ (в цвет корпуса)", callback_data="doors_lmdf"
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="Акриловые фасады", callback_data="doors_acrylic"
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text=t["back_btn"], callback_data="back_to_rods"
-              )
-          ],
-      ]
-  )
-  await callback.message.edit_text(t["doors_type_btn"], reply_markup=keyboard)
-  await state.set_state(CalculatorStates.waiting_for_doors_type)
-  await callback.answer()
 
 
 @router.callback_query(
@@ -811,12 +727,12 @@ async def back_to_doors_type(callback: CallbackQuery, state: FSMContext):
 async def process_doors_finish(callback: CallbackQuery, state: FSMContext):
   finish = callback.data.split("_")[1]
   await state.update_data(doors_finish=finish)
-  await finish_calculation(callback.message, state)
+  await finish_calculation(callback.message, state, edit=True)
   await callback.answer()
 
 
-# --- ИТОГОВЫЙ РАСЧЕТ И СИММЕТРИЧНЫЕ ФАСАДЫ С ПЕТЛЯМИ ---
-async def finish_calculation(message: Message, state: FSMContext):
+# --- ИТОГОВЫЙ РАСЧЕТ ---
+async def finish_calculation(message: Message, state: FSMContext, edit=False):
   data = await state.get_data()
   t = TEXTS[data["lang"]]
 
@@ -929,15 +845,15 @@ async def finish_calculation(message: Message, state: FSMContext):
       price=total_price,
   )
 
-  if isinstance(message, CallbackQuery):
-    await message.message.answer(
-        result_text, reply_markup=contact_kb, parse_mode="Markdown"
-    )
+  if edit:
+    await message.edit_text(result_text, parse_mode="Markdown")
   else:
-    await message.answer(
-        result_text, reply_markup=contact_kb, parse_mode="Markdown"
-    )
+    await message.answer(result_text, parse_mode="Markdown")
 
+  await message.answer(
+      "⬇️ " + (t["contact_btn"] if data["lang"] == "ru" else "Raqamni yuborish"),
+      reply_markup=contact_kb,
+  )
   await state.set_state(CalculatorStates.waiting_for_contact)
 
 
@@ -967,7 +883,9 @@ async def process_contact(message: Message, state: FSMContext, bot: Bot):
 
 # Веб-сервер для удержания порта на Render
 async def handle_ping(request):
-  return web.Response(text="Bot is running with back button support!")
+  return web.Response(
+      text="Bot is running with clean message editing navigation!"
+  )
 
 
 async def web_server():
@@ -988,7 +906,7 @@ async def main():
   dp.include_router(router)
 
   await web_server()
-  print("Бот с кнопкой возврата запущен!")
+  print("Бот с чистым интерфейсом редактирования сообщений запущен!")
   await dp.start_polling(bot)
 
 
