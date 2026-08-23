@@ -15,7 +15,7 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
 )
 
-TOKEN = "8886678281:AAEGb93zbn_TL1N-81GbxXAAWGnhTkUdPM"
+TOKEN = "8886678281:AAEGB93zbn_TLlN-81GbxXAAWGnhtIkuDpM"
 ADMIN_ID = 2617518
 
 router = Router()
