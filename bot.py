@@ -16,13 +16,14 @@ from aiogram.types import (
 )
 
 
-TOKEN = "8886678281:AAEGB93zbn_TLlN-81GbxXAAWGnhtIkuDpM"
+TOKEN = "8886678281:AAEGb93zbn_TL1N-81GbxXAAWGnhTkUdPM"
 ADMIN_ID = 2617518
 
 router = Router()
 
 
 class CalculatorStates(StatesGroup):
+  waiting_for_lang = State()  # Выбор языка
   waiting_for_type = State()
   waiting_for_width = State()
   waiting_for_height = State()
@@ -49,6 +50,80 @@ PRICES = {
     "doors_mirror": 7000,
 }
 
+# Словарь текстов для двух языков
+TEXTS = {
+    "ru": {
+        "start": (
+            "Здравствуйте! Я помогу рассчитать стоимость шкафа по вашим"
+            " размерам за 1 минуту.\n\nTilni tanlang / Выберите язык:"
+        ),
+        "type": "Какой тип шкафа вас интересует?",
+        "type_kupe": "🗄 Шкаф-купе",
+        "type_rasp": "🚪 Распашной",
+        "width_btn": "Выберите ширину шкафа (или введите число в мм):",
+        "height_btn": "Укажите высоту шкафа в мм:",
+        "depth_btn": "Выберите глубину шкафа:",
+        "depth_shallow": "До 40 см (400 мм)",
+        "depth_deep": "От 40 до 60 см (600 мм)",
+        "mat_btn": "Выберите материал корпуса и бренд:",
+        "hw_btn": (
+            "Выберите класс фурнитуры:\n\n• *Стандарт*: надежные петли и"
+            " направляющие без лишних переплат.\n• *Премиум*: плавное и"
+            " бесшумное закрывание от мировых брендов."
+        ),
+        "drawers_btn": "Сколько выдвижных ящиков необходимо?",
+        "rods_btn": "Сколько штанг для одежды установить?",
+        "doors_btn": "Какие фасады планируются?",
+        "contact_btn": "📱 Отправить мой номер",
+        "result": (
+            "📊 **Предварительный расчет:**\n• Тип: {type}\n• Размеры: {w} ×"
+            " {h} мм (Глубина: {depth_t})\n• Материал: {mat_t} ({mat_b})\n•"
+            " Фурнитура: {hw_t}\n• Ящики: {drawers} шт. | Штанги: {rods}"
+            " шт.\n• Фасады: {doors_t}\n\n💰 **Примерная стоимость:**"
+            " `{price:,}` сум\n\nНажмите кнопку ниже, чтобы отправить контакт и"
+            " передать заявку мастеру:"
+        ),
+        "success": "Спасибо! Заявка принята, скоро мы свяжемся с вами.",
+    },
+    "uz": {
+        "start": (
+            "Assalomu alaykum! Men sizga 1 daqiqa ichida o'lchamlaringiz"
+            " bo'yicha shkaf narxini hisoblashga yordam beraman.\n\nTilni"
+            " tanlang / Выберите язык:"
+        ),
+        "type": "Qaysi turdagi shkaf sizni qiziqtiradi?",
+        "type_kupe": "🗄 Kupe shkaf",
+        "type_rasp": "🚪 Ochiladigan shkaf",
+        "width_btn": "Shkafning kengligini tanlang (yoki mm da kiriting):",
+        "height_btn": "Shkafning balandligini mm da ko'rsating:",
+        "depth_btn": "Shkafning chuqurligini tanlang:",
+        "depth_shallow": "40 sm gacha (400 mm)",
+        "depth_deep": "40 dan 60 sm gacha (600 mm)",
+        "mat_btn": "Kuzov materiali va brendini tanlang:",
+        "hw_btn": (
+            "Aksessuarlar (furnitura) sinfini"
+            " tanlang:\n\n• *Standart*: ortiqcha xarajatlarsiz ishonchli"
+            " ilmoqlar va yo'naltiruvchilar.\n• *Premium*: jahon brendlaridan"
+            " yumshoq va jim yopilish."
+        ),
+        "drawers_btn": "Nechta chiqib keluvchi tortma kerak?",
+        "rods_btn": "Kiyim uchun nechta veshalka (shtanga) o'rnatish kerak?",
+        "doors_btn": "Qanday fasadlar rejalashtirilgan?",
+        "contact_btn": "📱 Raqamimni yuborish",
+        "result": (
+            "📊 **Dastlabki hisob-kitob:**\n• Turi: {type}\n• O'lchamlari: {w} ×"
+            " {h} mm (Chuqurligi: {depth_t})\n• Material: {mat_t}"
+            " ({mat_b})\n• Furnitura: {hw_t}\n• Tortmalar: {drawers} ta |"
+            " Shtangalar: {rods} ta\n• Fasadlar: {doors_t}\n\n💰 **Taxminiy"
+            " narx:** `{price:,}` so'm\n\nUsta bilan bog'lanish uchun pastdagi"
+            " tugmani bosing:"
+        ),
+        "success": (
+            "Rahmat! Ariza qabul qilindi, tez orada siz bilan bog'lanamiz."
+        ),
+    },
+}
+
 
 @router.message(CommandStart())
 async def cmd_start(message: Message, state: FSMContext):
@@ -56,21 +131,38 @@ async def cmd_start(message: Message, state: FSMContext):
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
+              InlineKeyboardButton(text="🇺🇿 O'zbekcha", callback_data="lang_uz"),
+              InlineKeyboardButton(text="🇷🇺 Русский", callback_data="lang_ru"),
+          ]
+      ]
+  )
+  await message.answer(TEXTS["ru"]["start"], reply_markup=keyboard)
+  await state.set_state(CalculatorStates.waiting_for_lang)
+
+
+@router.callback_query(
+    CalculatorStates.waiting_for_lang, F.data.startswith("lang_")
+)
+async def process_lang(callback: CallbackQuery, state: FSMContext):
+  lang = callback.data.split("_")[1]
+  await state.update_data(lang=lang)
+
+  t = TEXTS[lang]
+  keyboard = InlineKeyboardMarkup(
+      inline_keyboard=[
+          [
               InlineKeyboardButton(
-                  text="🗄 Шкаф-купе", callback_data="type_купе"
+                  text=t["type_kupe"], callback_data="type_купе"
               ),
               InlineKeyboardButton(
-                  text="🚪 Распашной", callback_data="type_распашной"
+                  text=t["type_rasp"], callback_data="type_распашной"
               ),
           ]
       ]
   )
-  await message.answer(
-      "Здравствуйте! Я помогу рассчитать стоимость шкафа по вашим размерам"
-      " за 1 минуту.\n\nКакой тип шкафа вас интересует?",
-      reply_markup=keyboard,
-  )
+  await callback.message.edit_text(t["type"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_type)
+  await callback.answer()
 
 
 @router.callback_query(
@@ -79,6 +171,8 @@ async def cmd_start(message: Message, state: FSMContext):
 async def process_type(callback: CallbackQuery, state: FSMContext):
   cabinet_type = callback.data.split("_")[1]
   await state.update_data(cabinet_type=cabinet_type)
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
@@ -92,9 +186,7 @@ async def process_type(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(
-      "Выберите ширину шкафа (или введите число в мм):", reply_markup=keyboard
-  )
+  await callback.message.edit_text(t["width_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_width)
   await callback.answer()
 
@@ -104,6 +196,9 @@ async def process_type(callback: CallbackQuery, state: FSMContext):
 )
 @router.message(CalculatorStates.waiting_for_width)
 async def process_width(event: Message | CallbackQuery, state: FSMContext):
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
+
   if isinstance(event, CallbackQuery):
     width = int(event.data.split("_")[1])
     message = event.message
@@ -113,7 +208,9 @@ async def process_width(event: Message | CallbackQuery, state: FSMContext):
       width = int(event.text)
       message = event
     except ValueError:
-      await event.answer("Пожалуйста, введите число (например, 1500).")
+      await event.answer(
+          "Пожалуйста, введите число / Iltimos raqam kiriting (masalan: 1500)."
+      )
       return
 
   await state.update_data(width=width)
@@ -130,9 +227,7 @@ async def process_width(event: Message | CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await message.answer(
-      "Укажите высоту шкафа в мм:", reply_markup=keyboard
-  )
+  await message.answer(t["height_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_height)
 
 
@@ -142,24 +237,16 @@ async def process_width(event: Message | CallbackQuery, state: FSMContext):
 async def process_height(callback: CallbackQuery, state: FSMContext):
   height = int(callback.data.split("_")[1])
   await state.update_data(height=height)
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
-          [
-              InlineKeyboardButton(
-                  text="До 40 см (400 мм)", callback_data="depth_350"
-              )
-          ],
-          [
-              InlineKeyboardButton(
-                  text="От 40 до 60 см (600 мм)", callback_data="depth_550"
-              )
-          ],
+          [InlineKeyboardButton(text=t["depth_shallow"], callback_data="depth_350")],
+          [InlineKeyboardButton(text=t["depth_deep"], callback_data="depth_550")],
       ]
   )
-  await callback.message.edit_text(
-      "Выберите глубину шкафа:", reply_markup=keyboard
-  )
+  await callback.message.edit_text(t["depth_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_depth)
   await callback.answer()
 
@@ -170,6 +257,8 @@ async def process_height(callback: CallbackQuery, state: FSMContext):
 async def process_depth(callback: CallbackQuery, state: FSMContext):
   depth = int(callback.data.split("_")[1])
   await state.update_data(depth=depth)
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
@@ -185,9 +274,7 @@ async def process_depth(callback: CallbackQuery, state: FSMContext):
           ],
       ]
   )
-  await callback.message.edit_text(
-      "Выберите материал корпуса и бренд:", reply_markup=keyboard
-  )
+  await callback.message.edit_text(t["mat_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_material)
   await callback.answer()
 
@@ -200,6 +287,8 @@ async def process_material(callback: CallbackQuery, state: FSMContext):
   mat_type = parts[1]
   mat_brand = parts[2]
   await state.update_data(mat_type=mat_type, mat_brand=mat_brand)
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
@@ -210,18 +299,13 @@ async def process_material(callback: CallbackQuery, state: FSMContext):
           ],
           [
               InlineKeyboardButton(
-                  text="💎 Премиум с доводчиками (Blum / Hettich)",
-                  callback_data="hw_premium",
+                  text="💎 Премиум (Blum / Hettich)", callback_data="hw_premium"
               )
           ],
       ]
   )
   await callback.message.edit_text(
-      "Выберите класс фурнитуры:\n\n• *Стандарт*: надежные петли и направляющие без"
-      " лишних переплат.\n• *Премиум*: плавное и бесшумное закрывание от"
-      " мировых брендов.",
-      reply_markup=keyboard,
-      parse_mode="Markdown",
+      t["hw_btn"], reply_markup=keyboard, parse_mode="Markdown"
   )
   await state.set_state(CalculatorStates.waiting_for_hardware)
   await callback.answer()
@@ -233,6 +317,8 @@ async def process_material(callback: CallbackQuery, state: FSMContext):
 async def process_hardware(callback: CallbackQuery, state: FSMContext):
   hardware = callback.data.split("_")[1]
   await state.update_data(hardware=hardware)
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
@@ -243,9 +329,7 @@ async def process_hardware(callback: CallbackQuery, state: FSMContext):
           ]
       ]
   )
-  await callback.message.edit_text(
-      "Сколько выдвижных ящиков необходимо?", reply_markup=keyboard
-  )
+  await callback.message.edit_text(t["drawers_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_drawers)
   await callback.answer()
 
@@ -256,6 +340,8 @@ async def process_hardware(callback: CallbackQuery, state: FSMContext):
 async def process_drawers(callback: CallbackQuery, state: FSMContext):
   drawers = int(callback.data.split("_")[1])
   await state.update_data(drawers=drawers)
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
@@ -265,9 +351,7 @@ async def process_drawers(callback: CallbackQuery, state: FSMContext):
           ]
       ]
   )
-  await callback.message.edit_text(
-      "Сколько штанг для одежды установить?", reply_markup=keyboard
-  )
+  await callback.message.edit_text(t["rods_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_rods)
   await callback.answer()
 
@@ -278,24 +362,30 @@ async def process_drawers(callback: CallbackQuery, state: FSMContext):
 async def process_rods(callback: CallbackQuery, state: FSMContext):
   rods = int(callback.data.split("_")[1])
   await state.update_data(rods=rods)
+  data = await state.get_data()
+  t = TEXTS[data["lang"]]
 
   keyboard = InlineKeyboardMarkup(
       inline_keyboard=[
           [
               InlineKeyboardButton(
-                  text="ЛДСП панели", callback_data="doors_ldsp"
+                  text="ЛДСП / LDSP" if data["lang"] == "ru" else "LDSP panellar",
+                  callback_data="doors_ldsp",
               )
           ],
           [
               InlineKeyboardButton(
-                  text="Зеркало во весь рост", callback_data="doors_mirror"
+                  text=(
+                      "Зеркало / Ko'zgu"
+                      if data["lang"] == "ru"
+                      else "To'liq bo'yi ko'zgu"
+                  ),
+                  callback_data="doors_mirror",
               )
           ],
       ]
   )
-  await callback.message.edit_text(
-      "Какие фасады планируются?", reply_markup=keyboard
-  )
+  await callback.message.edit_text(t["doors_btn"], reply_markup=keyboard)
   await state.set_state(CalculatorStates.waiting_for_doors)
   await callback.answer()
 
@@ -308,6 +398,7 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
   await state.update_data(doors=doors)
 
   data = await state.get_data()
+  t = TEXTS[data["lang"]]
 
   w = data["width"]
   h = data["height"]
@@ -316,10 +407,14 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
 
   if depth <= 400:
     base_rate = PRICE_SHALLOW
-    depth_text = "До 40 см"
+    depth_text = (
+        "До 40 см" if data["lang"] == "ru" else "40 sm gacha (400 mm)"
+    )
   else:
     base_rate = PRICE_DEEP
-    depth_text = "От 40 до 60 см"
+    depth_text = (
+        "От 40 до 60 см" if data["lang"] == "ru" else "40 dan 60 sm gacha"
+    )
 
   brand_addon = PRICES["Egger"] if data["mat_brand"] == "egger" else 0
   hw_addon = (
@@ -341,33 +436,36 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
       if data["hardware"] == "premium"
       else "Стандарт (Samet/Boyard)"
   )
+  doors_text = (
+      "Зеркало" if data["doors"] == "mirror" else "ЛДСП"
+  )
 
   await state.update_data(
       total_price=total_price, depth_text=depth_text, hw_text=hw_text
   )
 
   contact_kb = ReplyKeyboardMarkup(
-      keyboard=[
-          [KeyboardButton(text="📱 Отправить мой номер", request_contact=True)]
-      ],
+      keyboard=[[KeyboardButton(text=t["contact_btn"], request_contact=True)]],
       resize_keyboard=True,
       one_time_keyboard=True,
   )
 
-  text = (
-      f"📊 **Предварительный расчет:**\n"
-      f"• Тип: {data['cabinet_type'].capitalize()}\n"
-      f"• Размеры: {w} × {h} мм (Глубина: {depth_text})\n"
-      f"• Материал: {data['mat_type'].upper()} ({data['mat_brand'].capitalize()})\n"
-      f"• Фурнитура: {hw_text}\n"
-      f"• Ящики: {data['drawers']} шт. | Штанги: {data['rods']} шт.\n"
-      f"• Фасады: {'Зеркало' if data['doors']=='mirror' else 'ЛДСП'}\n\n"
-      f"💰 **Примерная стоимость:** `{total_price:,}` сум\n\n"
-      f"Нажмите кнопку ниже, чтобы отправить контакт и передать заявку мастеру:"
+  result_text = t["result"].format(
+      type=data["cabinet_type"].capitalize(),
+      w=w,
+      h=h,
+      depth_t=depth_text,
+      mat_t=data["mat_type"].upper(),
+      mat_b=data["mat_brand"].capitalize(),
+      hw_t=hw_text,
+      drawers=data["drawers"],
+      rods=data["rods"],
+      doors_t=doors_text,
+      price=total_price,
   )
 
   await callback.message.answer(
-      text, reply_markup=contact_kb, parse_mode="Markdown"
+      result_text, reply_markup=contact_kb, parse_mode="Markdown"
   )
   await state.set_state(CalculatorStates.waiting_for_contact)
   await callback.answer()
@@ -377,9 +475,10 @@ async def process_doors(callback: CallbackQuery, state: FSMContext):
 async def process_contact(message: Message, state: FSMContext, bot: Bot):
   contact = message.contact
   data = await state.get_data()
+  t = TEXTS[data.get("lang", "ru")]
 
   lead_text = (
-      f"🔥 **Новая заявка из бота!**\n"
+      f"🔥 **Новая заявка из бота!** (Язык: {data.get('lang', 'ru').upper()})\n"
       f"👤 Имя: {contact.first_name}\n"
       f"📞 Телефон: `{contact.phone_number}`\n\n"
       f"📐 Параметры:\n"
@@ -393,15 +492,13 @@ async def process_contact(message: Message, state: FSMContext, bot: Bot):
   )
 
   await bot.send_message(ADMIN_ID, lead_text, parse_mode="Markdown")
-  await message.answer(
-      "Спасибо! Заявка принята, скоро мы свяжемся с вами.", reply_markup=None
-  )
+  await message.answer(t["success"], reply_markup=None)
   await state.clear()
 
 
-# Функция для веб-сервера (чтобы Render не ругался на закрытый порт)
+# Веб-сервер для удержания порта на Render
 async def handle_ping(request):
-  return web.Response(text="Bot is running!")
+  return web.Response(text="Bot is running with multi-language!")
 
 
 async def web_server():
@@ -421,9 +518,8 @@ async def main():
   dp = Dispatcher()
   dp.include_router(router)
 
-  # Запускаем и веб-сервер для порта, и поллинг бота одновременно
   await web_server()
-  print("Бот запущен и готов к работе!")
+  print("Бот с поддержкой двух языков запущен!")
   await dp.start_polling(bot)
 
 
